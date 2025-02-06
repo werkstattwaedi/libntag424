@@ -3,16 +3,17 @@
  * @author Piotr Obst
  */
 
-#ifndef MFRC522_NTAG424DNA_h
-#define MFRC522_NTAG424DNA_h
+#pragma once
 
-#include <MFRC522Extended.h>
+#include "libbase.h"
+
+#include <PN532.h>
 #include <AES.h>
 #include <CBC.h>
 #include <AES_CMAC.h>
 #include <CRC32.h>
 
-class MFRC522_NTAG424DNA : public MFRC522Extended {
+class Ntag424  {
 
 public:
   
@@ -22,9 +23,7 @@ public:
   /////////////////////////////////////////////////////////////////////////////////////
   
   
-  MFRC522_NTAG424DNA() : MFRC522Extended() {};
-  MFRC522_NTAG424DNA(uint8_t rst) : MFRC522Extended(rst) {};
-  MFRC522_NTAG424DNA(uint8_t ss, uint8_t rst) : MFRC522Extended(ss, rst) {};
+  Ntag424(PN532* pcd) ;
   
   
   enum DNA_StatusCode : byte {
@@ -105,7 +104,7 @@ public:
   /////////////////////////////////////////////////////////////////////////////////////
   
   
-  StatusCode DNA_BasicTransceive(byte* sendData, byte sendLen, byte* backData, byte* backLen, byte pcb = 2);
+  DNA_StatusCode DNA_BasicTransceive(byte* sendData, byte sendLen, byte* backData, byte* backLen, byte pcb = 2);
   
   DNA_StatusCode DNA_AuthenticateEV2First(byte keyNumber, byte* key, byte* rndA);
   
@@ -136,7 +135,7 @@ public:
   // Reads UID when random ID is not enabled.
   // If random ID is enabled, reads random ID. To read the true ID in that case, use DNA_Full_GetCardUID.
   // This is only a wrapper function. It gets uid.uidByte from MFRC522 lib.
-  void DNA_Plain_GetCardUID(byte* backUID_7B);
+  // void DNA_Plain_GetCardUID(byte* backUID_7B);
   
   DNA_StatusCode DNA_Plain_GetFileSettings(DNA_File file, byte* backRespData, byte* backRespLen);
   
@@ -278,17 +277,13 @@ public:
   bool PICC_TryDeselectAndWakeupA();
   
 protected:
+  PN532 *pcd_;
+
   
-  /////////////////////////////////////////////////////////////////////////////////////
-  //
-  // Protected functions
-  //
-  /////////////////////////////////////////////////////////////////////////////////////
-  
-  StatusCode DNA_AuthenticateEV2First_Part1(byte keyNumber, byte* backData, byte* backLen);
-  StatusCode DNA_AuthenticateEV2First_Part2(byte* inData, byte* backData, byte* backLen);
-  StatusCode DNA_AuthenticateEV2NonFirst_Part1(byte keyNumber, byte* backData, byte* backLen);
-  StatusCode DNA_AuthenticateEV2NonFirst_Part2(byte* inData, byte* backData, byte* backLen);
+  DNA_StatusCode DNA_AuthenticateEV2First_Part1(byte keyNumber, byte* backData, byte* backLen);
+  DNA_StatusCode DNA_AuthenticateEV2First_Part2(byte* inData, byte* backData, byte* backLen);
+  DNA_StatusCode DNA_AuthenticateEV2NonFirst_Part1(byte keyNumber, byte* backData, byte* backLen);
+  DNA_StatusCode DNA_AuthenticateEV2NonFirst_Part2(byte* inData, byte* backData, byte* backLen);
   
   DNA_StatusCode DNA_Plain_GetVersion_native(byte Cmd, byte expectedSV2, byte* backRespData, byte* backRespLen);
   DNA_StatusCode DNA_Plain_ISOReadBinary_native(DNA_File file, byte length, byte offset, byte* backReadData, byte* backReadLen);
@@ -321,4 +316,3 @@ protected:
   
 };
 
-#endif

@@ -1,10 +1,10 @@
 /*
  * Arduino RFID/NFC Library for NXP NTAG 424 DNA tags using MFRC522.
- * NOTE: Please also check the comments in MFRC522_NTAG424DNA.h
+ * NOTE: Please also check the comments in Ntag424.h
  * @author Piotr Obst
  */
 
-#include "MFRC522_NTAG424DNA.h"
+#include "libntag424.h"
 
 
 CBC<AES128> cbc;
@@ -12,44 +12,52 @@ AESTiny128 aes128;
 AES_CMAC cmac(aes128);
 
 
+
+
+Ntag424::Ntag424(PN532* pcd) : pcd_(pcd) {
+
+}
+
 /////////////////////////////////////////////////////////////////////////////////////
 //
 // Basic functions for communicating with NTAG 424 DNA cards
 //
 /////////////////////////////////////////////////////////////////////////////////////
 
+Ntag424::DNA_StatusCode Ntag424::DNA_BasicTransceive(byte* sendData,
+                                                     byte sendLen,
+                                                     byte* backData,
+                                                     byte* backLen, byte pcb) {
+  DataFrame in_data_exchange{.command = PN532_COMMAND_INDATAEXCHANGE,
+                             .params =
+                                 {
+                                     0x01,  // FIXME target
+                                 },
+                             .params_length = 1 + sendLen};
+  memcpy(in_data_exchange.params + 1, sendData, sendLen);
 
-MFRC522Extended::StatusCode MFRC522_NTAG424DNA::DNA_BasicTransceive(byte* sendData, byte sendLen, byte* backData, byte* backLen, byte pcb)
-{
-  MFRC522Extended::StatusCode result;
-  
-  PcbBlock sendBlock;
-  sendBlock.prologue.pcb = pcb;
-  sendBlock.inf.size = sendLen;
-  sendBlock.inf.data = sendData;
-  
-  PcbBlock backBlock;
-  backBlock.inf.size = *backLen;
-  backBlock.inf.data = backData;
-  
-  result = TCL_Transceive(&sendBlock, &backBlock);
-  
-  *backLen=backBlock.inf.size;
-  
-  return result;
+  auto result = pcd_->CallFunction(&in_data_exchange);
+  memcpy(backData, in_data_exchange.params, in_data_exchange.params_length);
+  *backLen = in_data_exchange.params_length;
+
+  if (result != Status::kOk) {
+    return DNA_STATUS_ERROR;
+  }
+
+  return DNA_STATUS_OK;
 }
 
-
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_AuthenticateEV2First(byte keyNumber, byte* key, byte* rndA)
+Ntag424::DNA_StatusCode Ntag424::DNA_AuthenticateEV2First(byte keyNumber, byte* key, byte* rndA)
 {
   byte backData[61];
   byte backLen = 61;
   
-  MFRC522Extended::StatusCode statusCode;
+  Ntag424::DNA_StatusCode statusCode;
   statusCode = DNA_AuthenticateEV2First_Part1(keyNumber, backData, &backLen);
   
-  if (statusCode != STATUS_OK)
+  if (statusCode != DNA_StatusCode::DNA_STATUS_OK) {
     return (DNA_StatusCode) statusCode;
+  }
   
   if (backData[backLen - 2] != 0x91 || backData[backLen - 1] != 0xAF)
     return DNA_InterpretErrorCode(&backData[backLen - 2]);
@@ -83,8 +91,9 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_AuthenticateEV2First(
   backLen = 61;
   statusCode = DNA_AuthenticateEV2First_Part2(inDataEncrypted, backData, &backLen);
   
-  if (statusCode != STATUS_OK)
+  if (statusCode != DNA_StatusCode::DNA_STATUS_OK) {
     return (DNA_StatusCode) statusCode;
+  }
   
   if (backData[backLen - 2] != 0x91 || backData[backLen - 1] != 0x00)
     return DNA_InterpretErrorCode(&backData[backLen - 2]);
@@ -117,16 +126,17 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_AuthenticateEV2First(
 }
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_AuthenticateEV2NonFirst(byte keyNumber, byte* key, byte* rndA)
+Ntag424::DNA_StatusCode Ntag424::DNA_AuthenticateEV2NonFirst(byte keyNumber, byte* key, byte* rndA)
 {
   byte backData[61];
   byte backLen = 61;
   
-  MFRC522Extended::StatusCode statusCode;
+  Ntag424::DNA_StatusCode statusCode;
   statusCode = DNA_AuthenticateEV2NonFirst_Part1(keyNumber, backData, &backLen);
   
-  if (statusCode != STATUS_OK)
+  if (statusCode != DNA_STATUS_OK) {
     return (DNA_StatusCode) statusCode;
+  }
   
   if (backData[backLen - 2] != 0x91 || backData[backLen - 1] != 0xAF)
     return DNA_InterpretErrorCode(&backData[backLen - 2]);
@@ -160,7 +170,7 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_AuthenticateEV2NonFir
   backLen = 61;
   statusCode = DNA_AuthenticateEV2NonFirst_Part2(inDataEncrypted, backData, &backLen);
   
-  if (statusCode != STATUS_OK)
+  if (statusCode != DNA_STATUS_OK)
     return (DNA_StatusCode) statusCode;
   
   if (backData[backLen - 2] != 0x91 || backData[backLen - 1] != 0x00)
@@ -202,7 +212,7 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_AuthenticateEV2NonFir
 
 // Warning! "SDMEnabled = false" disables SDM for a file!
 // Use this function if you do not need to use SDM (SDM is disabled by default on a new tag).
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_ChangeFileSettings(DNA_File file, DNA_CommMode commMode, byte readAccess, byte writeAccess, byte readWriteAccess, byte changeAccess, byte SDMEnabled)
+Ntag424::DNA_StatusCode Ntag424::DNA_Plain_ChangeFileSettings(DNA_File file, DNA_CommMode commMode, byte readAccess, byte writeAccess, byte readWriteAccess, byte changeAccess, byte SDMEnabled)
 {
   if(SDMEnabled)
     return DNA_SDM_NOT_IMPLEMENTED_IN_LIB;
@@ -221,7 +231,7 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_ChangeFileSetti
 // [PICCDataOffset(3)], [SDMMACInputOFFset(3)], [SDMENCOffset(3)], [SDMENCLength(3)], [SDMMACOffset(3)], [SDMReadCtrLimit(3)]
 // Note: arguments in brackets are optional
 // Use this function only if you want to use SDM and know what you are doing.
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_ChangeFileSettings(DNA_File file, byte* sendData, byte sendDataLen)
+Ntag424::DNA_StatusCode Ntag424::DNA_Plain_ChangeFileSettings(DNA_File file, byte* sendData, byte sendDataLen)
 {
   if(sendDataLen > 30)
     return DNA_STATUS_NO_ROOM;
@@ -240,12 +250,12 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_ChangeFileSetti
   byte backData[61];
   byte backLen = 61;
   
-  MFRC522Extended::StatusCode statusCode;
+  Ntag424::DNA_StatusCode statusCode;
   statusCode = DNA_BasicTransceive(sendData2, sendDataLen + 7, backData, &backLen);
   
   delete[] sendData2;
   
-  if (statusCode != STATUS_OK)
+  if (statusCode != DNA_STATUS_OK)
     return (DNA_StatusCode) statusCode;
   
   if (backData[backLen - 2] != 0x91 || backData[backLen - 1] != 0x00)
@@ -258,16 +268,16 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_ChangeFileSetti
 }
 
 
-// Reads UID when random ID is not enabled.
-// If random ID is enabled, reads random ID. To read the true ID in that case, use DNA_Full_GetCardUID.
-// This is only a wrapper function. It gets uid.uidByte from MFRC522 lib.
-void MFRC522_NTAG424DNA::DNA_Plain_GetCardUID(byte* backUID_7B)
-{
-  memcpy(backUID_7B, uid.uidByte, 7);
-}
+// // Reads UID when random ID is not enabled.
+// // If random ID is enabled, reads random ID. To read the true ID in that case, use DNA_Full_GetCardUID.
+// // This is only a wrapper function. It gets uid.uidByte from MFRC522 lib.
+// void Ntag424::DNA_Plain_GetCardUID(byte* backUID_7B)
+// {
+//   memcpy(backUID_7B, uid.uidByte, 7);
+// }
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_GetFileSettings(DNA_File file, byte* backRespData, byte* backRespLen)
+Ntag424::DNA_StatusCode Ntag424::DNA_Plain_GetFileSettings(DNA_File file, byte* backRespData, byte* backRespLen)
 {
   byte sendData[7];
   
@@ -282,10 +292,10 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_GetFileSettings
   byte backData[61];
   byte backLen = 61;
   
-  MFRC522Extended::StatusCode statusCode;
+  Ntag424::DNA_StatusCode statusCode;
   statusCode = DNA_BasicTransceive(sendData, sizeof(sendData), backData, &backLen);
   
-  if (statusCode != STATUS_OK)
+  if (statusCode != DNA_STATUS_OK)
     return (DNA_StatusCode) statusCode;
   
   if (backData[backLen - 2] != 0x91 || backData[backLen - 1] != 0x00)
@@ -304,9 +314,9 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_GetFileSettings
 }
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_GetFileSettings_AccessRights(DNA_File file, byte* backReadAccess, byte* backWriteAccess, byte* backReadWriteAccess, byte* backChangeAccess)
+Ntag424::DNA_StatusCode Ntag424::DNA_Plain_GetFileSettings_AccessRights(DNA_File file, byte* backReadAccess, byte* backWriteAccess, byte* backReadWriteAccess, byte* backChangeAccess)
 {
-  MFRC522_NTAG424DNA::DNA_StatusCode dna_statusCode;
+  Ntag424::DNA_StatusCode dna_statusCode;
   byte backRespData[34];
   byte backRespLen = 34;
   dna_statusCode = DNA_Plain_GetFileSettings(file, backRespData, &backRespLen);
@@ -323,9 +333,9 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_GetFileSettings
 }
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_GetFileSettings_CommMode(DNA_File file, DNA_CommMode* backCommMode)
+Ntag424::DNA_StatusCode Ntag424::DNA_Plain_GetFileSettings_CommMode(DNA_File file, DNA_CommMode* backCommMode)
 {
-  MFRC522_NTAG424DNA::DNA_StatusCode dna_statusCode;
+  Ntag424::DNA_StatusCode dna_statusCode;
   byte backRespData[34];
   byte backRespLen = 34;
   dna_statusCode = DNA_Plain_GetFileSettings(file, backRespData, &backRespLen);
@@ -342,9 +352,9 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_GetFileSettings
 }
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_GetFileSettings_SDM(DNA_File file, bool* backSDMEnabled)
+Ntag424::DNA_StatusCode Ntag424::DNA_Plain_GetFileSettings_SDM(DNA_File file, bool* backSDMEnabled)
 {
-  MFRC522_NTAG424DNA::DNA_StatusCode dna_statusCode;
+  Ntag424::DNA_StatusCode dna_statusCode;
   byte backRespData[34];
   byte backRespLen = 34;
   dna_statusCode = DNA_Plain_GetFileSettings(file, backRespData, &backRespLen);
@@ -363,12 +373,12 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_GetFileSettings
 // VendorID, SWType, SWSubType, SWMajorVersion, SWMinorVersion, SWStorageSize, SWProtocol,
 // UID(7), BatchNo(4), BatchNo/FabKey, FabKey/CWProd, YearProd, [FabKeyID]
 // Note: arguments in brackets are optional; SW1 and SW2 are not included in backRespData
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_GetVersion(byte* backRespData, byte* backRespLen)
+Ntag424::DNA_StatusCode Ntag424::DNA_Plain_GetVersion(byte* backRespData, byte* backRespLen)
 {
   byte backData[29];
   byte backLen;
   
-  MFRC522_NTAG424DNA::DNA_StatusCode dna_statusCode;
+  Ntag424::DNA_StatusCode dna_statusCode;
   dna_statusCode = DNA_Plain_GetVersion_native(0x60, 0xAF, backData, &backLen);
   
   if (dna_statusCode != DNA_STATUS_OK)
@@ -405,9 +415,9 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_GetVersion(byte
 }
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_ISOReadBinary(DNA_File file, uint16_t length, byte offset, byte* backReadData, uint16_t* backReadLen)
+Ntag424::DNA_StatusCode Ntag424::DNA_Plain_ISOReadBinary(DNA_File file, uint16_t length, byte offset, byte* backReadData, uint16_t* backReadLen)
 {
-  MFRC522_NTAG424DNA::DNA_StatusCode dna_statusCode;
+  Ntag424::DNA_StatusCode dna_statusCode;
   
   byte* finalBackData = new byte[length];
   uint16_t finalBackLen = 0;
@@ -468,7 +478,7 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_ISOReadBinary(D
 }
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_ISOSelectFile(byte* fileIdentifier)
+Ntag424::DNA_StatusCode Ntag424::DNA_Plain_ISOSelectFile(byte* fileIdentifier)
 {  
   byte sendData[8];
   
@@ -484,9 +494,9 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_ISOSelectFile(b
   byte backData[61];
   byte backLen = 61;
   
-  StatusCode statusCode = DNA_BasicTransceive(sendData, sizeof(sendData), backData, &backLen);
+  auto statusCode = DNA_BasicTransceive(sendData, sizeof(sendData), backData, &backLen);
   
-  if (statusCode != STATUS_OK)
+  if (statusCode != DNA_STATUS_OK)
     return (DNA_StatusCode) statusCode;
   
   if (backLen < 2)
@@ -499,23 +509,23 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_ISOSelectFile(b
 }
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_ISOSelectFile_Application()
+Ntag424::DNA_StatusCode Ntag424::DNA_Plain_ISOSelectFile_Application()
 {
   byte fileIdentifier[2] = {0xE1, 0x10};
   return DNA_Plain_ISOSelectFile(fileIdentifier);
 }
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_ISOSelectFile_PICC()
+Ntag424::DNA_StatusCode Ntag424::DNA_Plain_ISOSelectFile_PICC()
 {
   byte fileIdentifier[2] = {0x3F, 0x00};
   return DNA_Plain_ISOSelectFile(fileIdentifier);
 }
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_ISOUpdateBinary(DNA_File file, uint16_t length, byte offset, byte* sendData)
+Ntag424::DNA_StatusCode Ntag424::DNA_Plain_ISOUpdateBinary(DNA_File file, uint16_t length, byte offset, byte* sendData)
 {
-  MFRC522_NTAG424DNA::DNA_StatusCode dna_statusCode;
+  Ntag424::DNA_StatusCode dna_statusCode;
   uint16_t sendDataOffset = 0;
   
   while (length > 58)
@@ -536,9 +546,9 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_ISOUpdateBinary
 }
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_ReadData(DNA_File file, uint16_t length, byte offset, byte* backReadData, uint16_t* backReadLen)
+Ntag424::DNA_StatusCode Ntag424::DNA_Plain_ReadData(DNA_File file, uint16_t length, byte offset, byte* backReadData, uint16_t* backReadLen)
 {
-  MFRC522_NTAG424DNA::DNA_StatusCode dna_statusCode;
+  Ntag424::DNA_StatusCode dna_statusCode;
   
   byte* finalBackData = new byte[length];
   uint16_t finalBackLen = 0;
@@ -604,7 +614,7 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_ReadData(DNA_Fi
 // See https://www.nxp.com/confidential/AN11350 and
 // https://community.nxp.com/t5/NFC-Knowledge-Base/Demo-for-Originality-Signature-Verification/ta-p/1278669
 // Full_Read_Sig is not implemented, because response in Full is 74 B, but MFRC522 can only handle 61 B responses, so it can't be implemented. If at least 64 B were available, it would be possible.
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_Read_Sig(byte* backSignature)
+Ntag424::DNA_StatusCode Ntag424::DNA_Plain_Read_Sig(byte* backSignature)
 {
   byte sendData[7];
   
@@ -619,10 +629,10 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_Read_Sig(byte* 
   byte backData[61];
   byte backLen = 61;
   
-  MFRC522Extended::StatusCode statusCode;
+  Ntag424::DNA_StatusCode statusCode;
   statusCode = DNA_BasicTransceive(sendData, sizeof(sendData), backData, &backLen);
   
-  if (statusCode != STATUS_OK)
+  if (statusCode != DNA_STATUS_OK)
     return (DNA_StatusCode) statusCode;
   
   // datasheet says it should be 0x9100, but it is 0x9190, which application note seems to confirm
@@ -638,9 +648,9 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_Read_Sig(byte* 
 }
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_WriteData(DNA_File file, uint16_t length, byte offset, byte* sendData)
+Ntag424::DNA_StatusCode Ntag424::DNA_Plain_WriteData(DNA_File file, uint16_t length, byte offset, byte* sendData)
 {
-  MFRC522_NTAG424DNA::DNA_StatusCode dna_statusCode;
+  Ntag424::DNA_StatusCode dna_statusCode;
   uint16_t sendDataOffset = 0;
   
   while (length > 50)
@@ -676,7 +686,7 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_WriteData(DNA_F
 // FileType(1), FileOption(1), AccessRights(2), FileSize(3), [SDMOptions(1)], [SDMAccessRights(2)], [UIDOffset(3)], [SDMReadCtrOffset(3)],
 // [PICCDataOffset(3)], [PICCDataOffset(3)], [SDMENCOffset(3)], [SDMENCLength(3)], [SDMMACOffset(3)], [SDMReadCtrLimit(3)]
 // Note: arguments in brackets are optional; SW1 and SW2 are not included in backRespData
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Mac_GetFileSettings(DNA_File file, byte* backRespData, byte* backRespLen)
+Ntag424::DNA_StatusCode Ntag424::DNA_Mac_GetFileSettings(DNA_File file, byte* backRespData, byte* backRespLen)
 {
   byte Cmd = 0xF5;
   byte sendData[15];
@@ -693,10 +703,10 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Mac_GetFileSettings(D
   byte backData[61];
   byte backLen = 61;
   
-  MFRC522Extended::StatusCode statusCode;
+  Ntag424::DNA_StatusCode statusCode;
   statusCode = DNA_BasicTransceive(sendData, sizeof(sendData), backData, &backLen);
   
-  if (statusCode != STATUS_OK)
+  if (statusCode != DNA_STATUS_OK)
     return (DNA_StatusCode) statusCode;
   
   if (backData[backLen - 2] != 0x91 || backData[backLen - 1] != 0x00)
@@ -721,9 +731,9 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Mac_GetFileSettings(D
 }
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Mac_GetFileSettings_AccessRights(DNA_File file, byte* backReadAccess, byte* backWriteAccess, byte* backReadWriteAccess, byte* backChangeAccess)
+Ntag424::DNA_StatusCode Ntag424::DNA_Mac_GetFileSettings_AccessRights(DNA_File file, byte* backReadAccess, byte* backWriteAccess, byte* backReadWriteAccess, byte* backChangeAccess)
 {
-  MFRC522_NTAG424DNA::DNA_StatusCode dna_statusCode;
+  Ntag424::DNA_StatusCode dna_statusCode;
   byte backRespData[34];
   byte backRespLen = 34;
   dna_statusCode = DNA_Mac_GetFileSettings(file, backRespData, &backRespLen);
@@ -740,9 +750,9 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Mac_GetFileSettings_A
 }
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Mac_GetFileSettings_CommMode(DNA_File file, DNA_CommMode* backCommMode)
+Ntag424::DNA_StatusCode Ntag424::DNA_Mac_GetFileSettings_CommMode(DNA_File file, DNA_CommMode* backCommMode)
 {
-  MFRC522_NTAG424DNA::DNA_StatusCode dna_statusCode;
+  Ntag424::DNA_StatusCode dna_statusCode;
   byte backRespData[34];
   byte backRespLen = 34;
   dna_statusCode = DNA_Mac_GetFileSettings(file, backRespData, &backRespLen);
@@ -759,9 +769,9 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Mac_GetFileSettings_C
 }
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Mac_GetFileSettings_SDM(DNA_File file, bool* backSDMEnabled)
+Ntag424::DNA_StatusCode Ntag424::DNA_Mac_GetFileSettings_SDM(DNA_File file, bool* backSDMEnabled)
 {
-  MFRC522_NTAG424DNA::DNA_StatusCode dna_statusCode;
+  Ntag424::DNA_StatusCode dna_statusCode;
   byte backRespData[34];
   byte backRespLen = 34;
   dna_statusCode = DNA_Mac_GetFileSettings(file, backRespData, &backRespLen);
@@ -775,7 +785,7 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Mac_GetFileSettings_S
 }
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Mac_GetKeyVersion(byte keyNumber, byte* backKeyVersion)
+Ntag424::DNA_StatusCode Ntag424::DNA_Mac_GetKeyVersion(byte keyNumber, byte* backKeyVersion)
 {
   byte Cmd = 0x64;
   byte sendData[15];
@@ -792,10 +802,10 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Mac_GetKeyVersion(byt
   byte backData[61];
   byte backLen = 61;
   
-  MFRC522Extended::StatusCode statusCode;
+  Ntag424::DNA_StatusCode statusCode;
   statusCode = DNA_BasicTransceive(sendData, sizeof(sendData), backData, &backLen);
   
-  if (statusCode != STATUS_OK)
+  if (statusCode != DNA_STATUS_OK)
     return (DNA_StatusCode) statusCode;
   
   if (backData[backLen - 2] != 0x91 || backData[backLen - 1] != 0x00)
@@ -818,12 +828,12 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Mac_GetKeyVersion(byt
 // VendorID, SWType, SWSubType, SWMajorVersion, SWMinorVersion, SWStorageSize, SWProtocol,
 // UID(7), BatchNo(4), BatchNo/FabKey, FabKey/CWProd, YearProd, [FabKeyID]
 // Note: arguments in brackets are optional; SW1 and SW2 are not included in backRespData
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Mac_GetVersion(byte* backRespData, byte* backRespLen)
+Ntag424::DNA_StatusCode Ntag424::DNA_Mac_GetVersion(byte* backRespData, byte* backRespLen)
 {
   byte backData[37];
   
   byte backLen;
-  MFRC522_NTAG424DNA::DNA_StatusCode dna_statusCode;
+  Ntag424::DNA_StatusCode dna_statusCode;
   
   dna_statusCode = DNA_Mac_GetVersion_native(0x60, 0xAF, backData, &backLen);
   
@@ -865,9 +875,9 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Mac_GetVersion(byte* 
 }
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Mac_ReadData(DNA_File file, uint16_t length, byte offset, byte* backReadData, uint16_t* backReadLen)
+Ntag424::DNA_StatusCode Ntag424::DNA_Mac_ReadData(DNA_File file, uint16_t length, byte offset, byte* backReadData, uint16_t* backReadLen)
 {
-  MFRC522_NTAG424DNA::DNA_StatusCode dna_statusCode;
+  Ntag424::DNA_StatusCode dna_statusCode;
   
   byte* finalBackData = new byte[length];
   uint16_t finalBackLen = 0;
@@ -928,9 +938,9 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Mac_ReadData(DNA_File
 }
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Mac_WriteData(DNA_File file, uint16_t length, byte offset, byte* sendData)
+Ntag424::DNA_StatusCode Ntag424::DNA_Mac_WriteData(DNA_File file, uint16_t length, byte offset, byte* sendData)
 {
-  MFRC522_NTAG424DNA::DNA_StatusCode dna_statusCode;
+  Ntag424::DNA_StatusCode dna_statusCode;
   uint16_t sendDataOffset = 0;
   
   while (length > 41)
@@ -964,7 +974,7 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Mac_WriteData(DNA_Fil
 
 // Warning! "SDMEnabled = false" disables SDM for a file!
 // Use this function if you do not need to use SDM (SDM is disabled by default on a new tag).
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_ChangeFileSettings(DNA_File file, DNA_CommMode commMode, byte readAccess, byte writeAccess, byte readWriteAccess, byte changeAccess, byte SDMEnabled)
+Ntag424::DNA_StatusCode Ntag424::DNA_Full_ChangeFileSettings(DNA_File file, DNA_CommMode commMode, byte readAccess, byte writeAccess, byte readWriteAccess, byte changeAccess, byte SDMEnabled)
 {
   if(SDMEnabled)
     return DNA_SDM_NOT_IMPLEMENTED_IN_LIB;
@@ -983,7 +993,7 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_ChangeFileSettin
 // [PICCDataOffset(3)], [SDMMACInputOFFset(3)], [SDMENCOffset(3)], [SDMENCLength(3)], [SDMMACOffset(3)], [SDMReadCtrLimit(3)]
 // Note: arguments in brackets are optional
 // Use this function only if you want to use SDM and know what you are doing.
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_ChangeFileSettings(DNA_File file, byte* sendData, byte sendDataLen)
+Ntag424::DNA_StatusCode Ntag424::DNA_Full_ChangeFileSettings(DNA_File file, byte* sendData, byte sendDataLen)
 {
   if(sendDataLen > 30)
     return DNA_STATUS_NO_ROOM;
@@ -1010,12 +1020,12 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_ChangeFileSettin
   byte backData[61];
   byte backLen = 61;
   
-  MFRC522Extended::StatusCode statusCode;
+  Ntag424::DNA_StatusCode statusCode;
   statusCode = DNA_BasicTransceive(sendData2, lengthWithPadding + 15, backData, &backLen);
   
   delete[] sendData2;
   
-  if (statusCode != STATUS_OK)
+  if (statusCode != DNA_STATUS_OK)
     return (DNA_StatusCode) statusCode;
   
   if (!DNA_IncrementCmdCtr())
@@ -1031,7 +1041,7 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_ChangeFileSettin
 }
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_ChangeKey(byte keyNumber, byte* oldKey, byte* newKey, byte newKeyVersion)
+Ntag424::DNA_StatusCode Ntag424::DNA_Full_ChangeKey(byte keyNumber, byte* oldKey, byte* newKey, byte newKeyVersion)
 {
   byte Cmd = 0xC4;
   
@@ -1070,9 +1080,9 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_ChangeKey(byte k
   byte backData[61] = {};
   byte backLen = 61;
   
-  StatusCode statusCode = DNA_BasicTransceive(sendData, sizeof(sendData), backData, &backLen);
+  auto statusCode = DNA_BasicTransceive(sendData, sizeof(sendData), backData, &backLen);
   
-  if (statusCode != STATUS_OK)
+  if (statusCode != DNA_STATUS_OK)
     return (DNA_StatusCode) statusCode;
   
   if (!DNA_IncrementCmdCtr())
@@ -1095,13 +1105,13 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_ChangeKey(byte k
 }
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_ChangeKey0(byte* newKey, byte newKeyVersion)
+Ntag424::DNA_StatusCode Ntag424::DNA_Full_ChangeKey0(byte* newKey, byte newKeyVersion)
 {
   return DNA_Full_ChangeKey(0, nullptr, newKey, newKeyVersion);
 }
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_GetCardUID(byte* backUID_7B)
+Ntag424::DNA_StatusCode Ntag424::DNA_Full_GetCardUID(byte* backUID_7B)
 {
   byte Cmd = 0x51;
   
@@ -1118,10 +1128,10 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_GetCardUID(byte*
   byte backData[61];
   byte backLen = 61;
   
-  MFRC522Extended::StatusCode statusCode;
+  Ntag424::DNA_StatusCode statusCode;
   statusCode = DNA_BasicTransceive(sendData, sizeof(sendData), backData, &backLen);
   
-  if (statusCode != STATUS_OK)
+  if (statusCode != DNA_STATUS_OK)
     return (DNA_StatusCode) statusCode;
   
   if (!DNA_IncrementCmdCtr())
@@ -1152,7 +1162,7 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_GetCardUID(byte*
 
 
 // Reads SDMReadCtr. This command works if you enable SDM on your own, but it is not implemented in this library currently.
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_GetFileCounters(DNA_File file, uint32_t* backSDMReadCtr)
+Ntag424::DNA_StatusCode Ntag424::DNA_Full_GetFileCounters(DNA_File file, uint32_t* backSDMReadCtr)
 {
   byte Cmd = 0xF6;
   byte sendData[15];
@@ -1169,10 +1179,10 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_GetFileCounters(
   byte backData[61];
   byte backLen = 61;
   
-  MFRC522Extended::StatusCode statusCode;
+  Ntag424::DNA_StatusCode statusCode;
   statusCode = DNA_BasicTransceive(sendData, sizeof(sendData), backData, &backLen);
   
-  if (statusCode != STATUS_OK)
+  if (statusCode != DNA_STATUS_OK)
     return (DNA_StatusCode) statusCode;
   
   if (!DNA_IncrementCmdCtr())
@@ -1202,9 +1212,9 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_GetFileCounters(
 }
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_ReadData(DNA_File file, uint16_t length, byte offset, byte* backReadData, uint16_t* backReadLen)
+Ntag424::DNA_StatusCode Ntag424::DNA_Full_ReadData(DNA_File file, uint16_t length, byte offset, byte* backReadData, uint16_t* backReadLen)
 {
-  MFRC522_NTAG424DNA::DNA_StatusCode dna_statusCode;
+  Ntag424::DNA_StatusCode dna_statusCode;
   
   byte* finalBackData = new byte[length];
   uint16_t finalBackLen = 0;
@@ -1265,7 +1275,7 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_ReadData(DNA_Fil
 }
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_SetConfiguration(byte* sendData, byte sendDataLen)
+Ntag424::DNA_StatusCode Ntag424::DNA_Full_SetConfiguration(byte* sendData, byte sendDataLen)
 {
   byte Cmd = 0x5C;
   
@@ -1289,10 +1299,10 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_SetConfiguration
   byte backData[61];
   byte backLen = 61;
   
-  MFRC522Extended::StatusCode statusCode;
+  Ntag424::DNA_StatusCode statusCode;
   statusCode = DNA_BasicTransceive(sendData2, sizeof(sendData2), backData, &backLen);
   
-  if (statusCode != STATUS_OK)
+  if (statusCode != DNA_STATUS_OK)
     return (DNA_StatusCode) statusCode;
   
   if (!DNA_IncrementCmdCtr())
@@ -1308,7 +1318,7 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_SetConfiguration
 }
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_SetConfiguration_FailedCtrOption(bool FailedCtrEnabled, uint16_t TotFailCtrLimit, uint16_t TotFailCtrDecr)
+Ntag424::DNA_StatusCode Ntag424::DNA_Full_SetConfiguration_FailedCtrOption(bool FailedCtrEnabled, uint16_t TotFailCtrLimit, uint16_t TotFailCtrDecr)
 {
   byte sendData[5] = {};
   if(FailedCtrEnabled)
@@ -1322,7 +1332,7 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_SetConfiguration
 
 
 // Warning! Enables LRP (unsuported by this lib) permanently, when "turnLRPModeON_Permanent = true"! Use with care.
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_SetConfiguration_PDCap2(bool turnLRPModeON_Permanent, byte PDCap2_5, byte PDCap2_6)
+Ntag424::DNA_StatusCode Ntag424::DNA_Full_SetConfiguration_PDCap2(bool turnLRPModeON_Permanent, byte PDCap2_5, byte PDCap2_6)
 {
   byte sendData[10] = {};
   if(turnLRPModeON_Permanent)
@@ -1334,7 +1344,7 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_SetConfiguration
 
 
 // Warning! Enables RandomID permanently! Use with care.
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_SetConfiguration_Permanent_RandomID_ON()
+Ntag424::DNA_StatusCode Ntag424::DNA_Full_SetConfiguration_Permanent_RandomID_ON()
 {
   byte sendData = 0b10;
   return DNA_Full_SetConfiguration(&sendData, sizeof(sendData));
@@ -1342,7 +1352,7 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_SetConfiguration
 
 
 // Warning! Disables SDM chained writing permanently! Use with care.
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_SetConfiguration_Permanent_SDM_Chained_Write_OFF()
+Ntag424::DNA_StatusCode Ntag424::DNA_Full_SetConfiguration_Permanent_SDM_Chained_Write_OFF()
 {
   byte sendData[2] = {};
   sendData[0] = 0b100;
@@ -1351,7 +1361,7 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_SetConfiguration
 
 
 // Warning! It is strongly recommended not to disable StrongBackModulation!
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_SetConfiguration_StrongBackModulation(bool StrongBackModulation)
+Ntag424::DNA_StatusCode Ntag424::DNA_Full_SetConfiguration_StrongBackModulation(bool StrongBackModulation)
 {
   byte sendData = 0;
   if(StrongBackModulation)
@@ -1360,9 +1370,9 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_SetConfiguration
 }
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_WriteData(DNA_File file, uint16_t length, byte offset, byte* sendData)
+Ntag424::DNA_StatusCode Ntag424::DNA_Full_WriteData(DNA_File file, uint16_t length, byte offset, byte* sendData)
 {
-  MFRC522_NTAG424DNA::DNA_StatusCode dna_statusCode;
+  Ntag424::DNA_StatusCode dna_statusCode;
   uint16_t sendDataOffset = 0;
   
   while (length > 31)
@@ -1397,46 +1407,46 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_WriteData(DNA_Fi
 // PICC_DeselectAndWakeupA is a modified verison of PICC_IsNewCardPresent from MFRC522Extended.cpp in MFRC522 lib.
 // TCL_Deselect was added and PICC_RequestA was changed to PICC_WakeupA
 // Deselects current card and returns true if any card responds to a WakeupA command.
-bool MFRC522_NTAG424DNA::PICC_TryDeselectAndWakeupA() {
-  byte bufferATQA[2];
-  byte bufferSize = sizeof(bufferATQA);
+bool Ntag424::PICC_TryDeselectAndWakeupA() {
+  // byte bufferATQA[2];
+  // byte bufferSize = sizeof(bufferATQA);
   
-  TCL_Deselect(&tag); // deselect current card
+  // TCL_Deselect(&tag); // deselect current card
 
-  // Reset baud rates
-  PCD_WriteRegister(TxModeReg, 0x00);
-  PCD_WriteRegister(RxModeReg, 0x00);
-  // Reset ModWidthReg
-  PCD_WriteRegister(ModWidthReg, 0x26);
+  // // Reset baud rates
+  // PCD_WriteRegister(TxModeReg, 0x00);
+  // PCD_WriteRegister(RxModeReg, 0x00);
+  // // Reset ModWidthReg
+  // PCD_WriteRegister(ModWidthReg, 0x26);
 
-  MFRC522::StatusCode result = PICC_WakeupA(bufferATQA, &bufferSize);
+  // MFRC522::StatusCode result = PICC_WakeupA(bufferATQA, &bufferSize);
 
-  if (result == STATUS_OK || result == STATUS_COLLISION) {
-    tag.atqa = ((uint16_t)bufferATQA[1] << 8) | bufferATQA[0];
-    tag.ats.size = 0;
-    tag.ats.fsc = 32;  // default FSC value
+  // if (result == DNA_STATUS_OK || result == STATUS_COLLISION) {
+  //   tag.atqa = ((uint16_t)bufferATQA[1] << 8) | bufferATQA[0];
+  //   tag.ats.size = 0;
+  //   tag.ats.fsc = 32;  // default FSC value
 
-    // Defaults for TA1
-    tag.ats.ta1.transmitted = false;
-    tag.ats.ta1.sameD = false;
-    tag.ats.ta1.ds = MFRC522Extended::BITRATE_106KBITS;
-    tag.ats.ta1.dr = MFRC522Extended::BITRATE_106KBITS;
+  //   // Defaults for TA1
+  //   tag.ats.ta1.transmitted = false;
+  //   tag.ats.ta1.sameD = false;
+  //   tag.ats.ta1.ds = MFRC522Extended::BITRATE_106KBITS;
+  //   tag.ats.ta1.dr = MFRC522Extended::BITRATE_106KBITS;
 
-    // Defaults for TB1
-    tag.ats.tb1.transmitted = false;
-    tag.ats.tb1.fwi = 0;  // TODO: Don't know the default for this!
-    tag.ats.tb1.sfgi = 0;  // The default value of SFGI is 0 (meaning that the card does not need any particular SFGT)
+  //   // Defaults for TB1
+  //   tag.ats.tb1.transmitted = false;
+  //   tag.ats.tb1.fwi = 0;  // TODO: Don't know the default for this!
+  //   tag.ats.tb1.sfgi = 0;  // The default value of SFGI is 0 (meaning that the card does not need any particular SFGT)
 
-    // Defaults for TC1
-    tag.ats.tc1.transmitted = false;
-    tag.ats.tc1.supportsCID = true;
-    tag.ats.tc1.supportsNAD = false;
+  //   // Defaults for TC1
+  //   tag.ats.tc1.transmitted = false;
+  //   tag.ats.tc1.supportsCID = true;
+  //   tag.ats.tc1.supportsNAD = false;
 
-    memset(tag.ats.data, 0, FIFO_SIZE - 2);
+  //   memset(tag.ats.data, 0, FIFO_SIZE - 2);
 
-    tag.blockNumber = false;
-    return true;
-  }
+  //   tag.blockNumber = false;
+  //   return true;
+  // }
   return false;
 }
 
@@ -1452,7 +1462,7 @@ bool MFRC522_NTAG424DNA::PICC_TryDeselectAndWakeupA() {
 /////////////////////////////////////////////////////////////////////////////////////
 
 
-MFRC522Extended::StatusCode MFRC522_NTAG424DNA::DNA_AuthenticateEV2First_Part1(byte keyNumber, byte* backData, byte* backLen)
+Ntag424::DNA_StatusCode Ntag424::DNA_AuthenticateEV2First_Part1(byte keyNumber, byte* backData, byte* backLen)
 {
   byte sendData[8];
   
@@ -1469,7 +1479,7 @@ MFRC522Extended::StatusCode MFRC522_NTAG424DNA::DNA_AuthenticateEV2First_Part1(b
 }
 
 
-MFRC522Extended::StatusCode MFRC522_NTAG424DNA::DNA_AuthenticateEV2First_Part2(byte* inData, byte* backData, byte* backLen)
+Ntag424::DNA_StatusCode Ntag424::DNA_AuthenticateEV2First_Part2(byte* inData, byte* backData, byte* backLen)
 {
   byte sendData[38];
   
@@ -1485,7 +1495,7 @@ MFRC522Extended::StatusCode MFRC522_NTAG424DNA::DNA_AuthenticateEV2First_Part2(b
 }
 
 
-MFRC522Extended::StatusCode MFRC522_NTAG424DNA::DNA_AuthenticateEV2NonFirst_Part1(byte keyNumber, byte* backData, byte* backLen)
+Ntag424::DNA_StatusCode Ntag424::DNA_AuthenticateEV2NonFirst_Part1(byte keyNumber, byte* backData, byte* backLen)
 {
   byte sendData[7];
   
@@ -1501,7 +1511,7 @@ MFRC522Extended::StatusCode MFRC522_NTAG424DNA::DNA_AuthenticateEV2NonFirst_Part
 }
 
 
-MFRC522Extended::StatusCode MFRC522_NTAG424DNA::DNA_AuthenticateEV2NonFirst_Part2(byte* inData, byte* backData, byte* backLen)
+Ntag424::DNA_StatusCode Ntag424::DNA_AuthenticateEV2NonFirst_Part2(byte* inData, byte* backData, byte* backLen)
 {
   return DNA_AuthenticateEV2First_Part2(inData, backData, backLen);
 }
@@ -1511,7 +1521,7 @@ MFRC522Extended::StatusCode MFRC522_NTAG424DNA::DNA_AuthenticateEV2NonFirst_Part
 
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_GetVersion_native(byte Cmd, byte expectedSV2, byte* backRespData, byte* backRespLen)
+Ntag424::DNA_StatusCode Ntag424::DNA_Plain_GetVersion_native(byte Cmd, byte expectedSV2, byte* backRespData, byte* backRespLen)
 {
   byte sendData[5];
   
@@ -1524,10 +1534,10 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_GetVersion_nati
   byte backData[61];
   byte backLen = 61;
   
-  MFRC522Extended::StatusCode statusCode;
+  Ntag424::DNA_StatusCode statusCode;
   statusCode = DNA_BasicTransceive(sendData, sizeof(sendData), backData, &backLen);
   
-  if (statusCode != STATUS_OK)
+  if (statusCode != DNA_STATUS_OK)
     return (DNA_StatusCode) statusCode;
   
   if (backData[backLen - 2] != 0x91 || backData[backLen - 1] != expectedSV2)
@@ -1543,7 +1553,7 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_GetVersion_nati
 }
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_ISOReadBinary_native(DNA_File file, byte length, byte offset, byte* backReadData, byte* backReadLen)
+Ntag424::DNA_StatusCode Ntag424::DNA_Plain_ISOReadBinary_native(DNA_File file, byte length, byte offset, byte* backReadData, byte* backReadLen)
 {
   if (length > 59)
     return DNA_STATUS_NO_ROOM;
@@ -1562,10 +1572,10 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_ISOReadBinary_n
   byte backData[61] = {};
   byte backLen = 61;
   
-  MFRC522Extended::StatusCode statusCode;
+  Ntag424::DNA_StatusCode statusCode;
   statusCode = DNA_BasicTransceive(sendData, sizeof(sendData), backData, &backLen);
   
-  if (statusCode != STATUS_OK)
+  if (statusCode != DNA_STATUS_OK)
     return (DNA_StatusCode) statusCode;
   
   if (backData[backLen - 2] != 0x90 || backData[backLen - 1] != 0x00)
@@ -1582,7 +1592,7 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_ISOReadBinary_n
 }
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_ISOUpdateBinary_native(DNA_File file, byte length, byte offset, byte* sendData)
+Ntag424::DNA_StatusCode Ntag424::DNA_Plain_ISOUpdateBinary_native(DNA_File file, byte length, byte offset, byte* sendData)
 {
   if (length > 58)
     return DNA_STATUS_NO_ROOM;
@@ -1602,12 +1612,12 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_ISOUpdateBinary
   byte backData[61];
   byte backLen = 61;
   
-  MFRC522Extended::StatusCode statusCode;
+  Ntag424::DNA_StatusCode statusCode;
   statusCode = DNA_BasicTransceive(sendData2, length + 5, backData, &backLen);
   
   delete[] sendData2;
   
-  if (statusCode != STATUS_OK)
+  if (statusCode != DNA_STATUS_OK)
     return (DNA_StatusCode) statusCode;
   
   if (backData[backLen - 2] != 0x90 || backData[backLen - 1] != 0x00)
@@ -1620,7 +1630,7 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_ISOUpdateBinary
 }
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_ReadData_native(DNA_File file, byte length, byte offset, byte* backReadData, byte* backReadLen)
+Ntag424::DNA_StatusCode Ntag424::DNA_Plain_ReadData_native(DNA_File file, byte length, byte offset, byte* backReadData, byte* backReadLen)
 {
   if (length > 59)
     return DNA_STATUS_NO_ROOM;
@@ -1648,10 +1658,10 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_ReadData_native
   byte backData[61];
   byte backLen = 61;
   
-  MFRC522Extended::StatusCode statusCode;
+  Ntag424::DNA_StatusCode statusCode;
   statusCode = DNA_BasicTransceive(sendData, sizeof(sendData), backData, &backLen);
   
-  if (statusCode != STATUS_OK)
+  if (statusCode != DNA_STATUS_OK)
     return (DNA_StatusCode) statusCode;
   
   if (backData[backLen - 2] != 0x91 || backData[backLen - 1] != 0x00)
@@ -1668,7 +1678,7 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_ReadData_native
 }
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_WriteData_native(DNA_File file, byte length, byte offset, byte* sendData)
+Ntag424::DNA_StatusCode Ntag424::DNA_Plain_WriteData_native(DNA_File file, byte length, byte offset, byte* sendData)
 {
   if (length > 50)
     return DNA_STATUS_NO_ROOM;
@@ -1696,12 +1706,12 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_WriteData_nativ
   byte backData[64];
   byte backLen = 64;
   
-  MFRC522Extended::StatusCode statusCode;
+  Ntag424::DNA_StatusCode statusCode;
   statusCode = DNA_BasicTransceive(sendData2, length + 13, backData, &backLen);
   
   delete[] sendData2;
   
-  if (statusCode != STATUS_OK)
+  if (statusCode != DNA_STATUS_OK)
     return (DNA_StatusCode) statusCode;
   
   if (backData[backLen - 2] != 0x91 || backData[backLen - 1] != 0x00)
@@ -1718,7 +1728,7 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Plain_WriteData_nativ
 
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Mac_GetVersion_native(byte Cmd, byte expectedSV2, byte* backRespData, byte* backRespLen)
+Ntag424::DNA_StatusCode Ntag424::DNA_Mac_GetVersion_native(byte Cmd, byte expectedSV2, byte* backRespData, byte* backRespLen)
 {
   byte sendData[14];
   
@@ -1733,10 +1743,10 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Mac_GetVersion_native
   byte backData[61];
   byte backLen = 61;
   
-  MFRC522Extended::StatusCode statusCode;
+  Ntag424::DNA_StatusCode statusCode;
   statusCode = DNA_BasicTransceive(sendData, sizeof(sendData), backData, &backLen);
   
-  if (statusCode != STATUS_OK)
+  if (statusCode != DNA_STATUS_OK)
     return (DNA_StatusCode) statusCode;
   
   if (!DNA_IncrementCmdCtr())
@@ -1755,7 +1765,7 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Mac_GetVersion_native
 }
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Mac_ReadData_native(DNA_File file, byte length, byte offset, byte* backReadData, byte* backReadLen)
+Ntag424::DNA_StatusCode Ntag424::DNA_Mac_ReadData_native(DNA_File file, byte length, byte offset, byte* backReadData, byte* backReadLen)
 {
   if (length > 51)
     return DNA_STATUS_NO_ROOM;
@@ -1784,10 +1794,10 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Mac_ReadData_native(D
   byte backData[61];
   byte backLen = 61;
   
-  MFRC522Extended::StatusCode statusCode;
+  Ntag424::DNA_StatusCode statusCode;
   statusCode = DNA_BasicTransceive(sendData, sizeof(sendData), backData, &backLen);
   
-  if (statusCode != STATUS_OK)
+  if (statusCode != DNA_STATUS_OK)
     return (DNA_StatusCode) statusCode;
   
   if (!DNA_IncrementCmdCtr())
@@ -1813,7 +1823,7 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Mac_ReadData_native(D
 }
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Mac_WriteData_native(DNA_File file, byte length, byte offset, byte* sendData)
+Ntag424::DNA_StatusCode Ntag424::DNA_Mac_WriteData_native(DNA_File file, byte length, byte offset, byte* sendData)
 {
   if (length > 41)
     return DNA_STATUS_NO_ROOM;
@@ -1844,12 +1854,12 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Mac_WriteData_native(
   byte backData[61];
   byte backLen = 61;
   
-  MFRC522Extended::StatusCode statusCode;
+  Ntag424::DNA_StatusCode statusCode;
   statusCode = DNA_BasicTransceive(sendData2, length + 21, backData, &backLen);
   
   delete[] sendData2;
   
-  if (statusCode != STATUS_OK)
+  if (statusCode != DNA_STATUS_OK)
     return (DNA_StatusCode) statusCode;
   
   if (!DNA_IncrementCmdCtr())
@@ -1869,7 +1879,7 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Mac_WriteData_native(
 
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_ReadData_native(DNA_File file, byte length, byte offset, byte* backReadData, byte* backReadLen)
+Ntag424::DNA_StatusCode Ntag424::DNA_Full_ReadData_native(DNA_File file, byte length, byte offset, byte* backReadData, byte* backReadLen)
 {
   if (length > 47)
     return DNA_STATUS_NO_ROOM;
@@ -1898,10 +1908,10 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_ReadData_native(
   byte backData[61];
   byte backLen = 61;
   
-  MFRC522Extended::StatusCode statusCode;
+  Ntag424::DNA_StatusCode statusCode;
   statusCode = DNA_BasicTransceive(sendData, sizeof(sendData), backData, &backLen);
   
-  if (statusCode != STATUS_OK)
+  if (statusCode != DNA_STATUS_OK)
     return (DNA_StatusCode) statusCode;
   
   if (!DNA_IncrementCmdCtr())
@@ -1939,7 +1949,7 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_ReadData_native(
 }
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_WriteData_native(DNA_File file, byte length, byte offset, byte* sendData)
+Ntag424::DNA_StatusCode Ntag424::DNA_Full_WriteData_native(DNA_File file, byte length, byte offset, byte* sendData)
 {
   if (length > 31)
     return DNA_STATUS_NO_ROOM;
@@ -1975,12 +1985,12 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_WriteData_native
   byte backData[61];
   byte backLen = 61;
   
-  MFRC522Extended::StatusCode statusCode;
+  Ntag424::DNA_StatusCode statusCode;
   statusCode = DNA_BasicTransceive(sendData2, lengthWithPadding + 21, backData, &backLen);
   
   delete[] sendData2;
   
-  if (statusCode != STATUS_OK)
+  if (statusCode != DNA_STATUS_OK)
     return (DNA_StatusCode) statusCode;
   
   if (!DNA_IncrementCmdCtr())
@@ -2000,7 +2010,7 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_Full_WriteData_native
 
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_CheckResponseCMACt(byte* responseCMACt)
+Ntag424::DNA_StatusCode Ntag424::DNA_CheckResponseCMACt(byte* responseCMACt)
 {
   byte respData[7] = {0};
   respData[1] = CmdCtr[0];
@@ -2018,7 +2028,7 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_CheckResponseCMACt(by
 }
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_CheckResponseCMACtWithData(byte* data, byte dataLen, byte* responseCMACt)
+Ntag424::DNA_StatusCode Ntag424::DNA_CheckResponseCMACtWithData(byte* data, byte dataLen, byte* responseCMACt)
 {
   byte* respData = new byte[dataLen + 7];
   respData[0] = 0;
@@ -2039,64 +2049,64 @@ MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_CheckResponseCMACtWit
 }
 
 
-MFRC522_NTAG424DNA::DNA_StatusCode MFRC522_NTAG424DNA::DNA_InterpretErrorCode(byte* SW1_2)
+Ntag424::DNA_StatusCode Ntag424::DNA_InterpretErrorCode(byte* SW1_2)
 {
   uint16_t SW = SW1_2[0] << 8 | SW1_2[1];
   switch(SW)
   {
     case 0x6581:
-      return MFRC522_NTAG424DNA::MEMORY_ERROR;
+      return Ntag424::MEMORY_ERROR;
     case 0x6700:
-      return MFRC522_NTAG424DNA::LENGTH_ERROR;
+      return Ntag424::LENGTH_ERROR;
     case 0x6982:
-      return MFRC522_NTAG424DNA::SECURITY_NOT_SATISFIED;
+      return Ntag424::SECURITY_NOT_SATISFIED;
     case 0x6985:
-      return MFRC522_NTAG424DNA::CONDITIONS_NOT_SATISFIED;
+      return Ntag424::CONDITIONS_NOT_SATISFIED;
     case 0x6A82:
-      return MFRC522_NTAG424DNA::FILE_OR_APP_NOT_FOUND;
+      return Ntag424::FILE_OR_APP_NOT_FOUND;
     case 0x6A86:
-      return MFRC522_NTAG424DNA::INCORRECT_PARAMS;
+      return Ntag424::INCORRECT_PARAMS;
     case 0x6A87:
-      return MFRC522_NTAG424DNA::INCORRECT_LC;
+      return Ntag424::INCORRECT_LC;
     case 0x6A00:
-      return MFRC522_NTAG424DNA::CLA_NOT_SUPPORTED;
+      return Ntag424::CLA_NOT_SUPPORTED;
     case 0x910B:
-      return MFRC522_NTAG424DNA::COMMAND_NOT_FOUND;
+      return Ntag424::COMMAND_NOT_FOUND;
     case 0x910C:
-      return MFRC522_NTAG424DNA::COMMAND_FORMAT_ERROR;
+      return Ntag424::COMMAND_FORMAT_ERROR;
     case 0x911C:
-      return MFRC522_NTAG424DNA::ILLEGAL_COMMAND_CODE;
+      return Ntag424::ILLEGAL_COMMAND_CODE;
     case 0x911E:
-      return MFRC522_NTAG424DNA::INTEGRITY_ERROR;
+      return Ntag424::INTEGRITY_ERROR;
     case 0x9140:
-      return MFRC522_NTAG424DNA::NO_SUCH_KEY;
+      return Ntag424::NO_SUCH_KEY;
     case 0x917E:
-      return MFRC522_NTAG424DNA::LENGTH_ERROR;
+      return Ntag424::LENGTH_ERROR;
     case 0x919D:
-      return MFRC522_NTAG424DNA::PERMISSION_DENIED;
+      return Ntag424::PERMISSION_DENIED;
     case 0x919E:
-      return MFRC522_NTAG424DNA::PARAMETER_ERROR;
+      return Ntag424::PARAMETER_ERROR;
     case 0x91AD:
-      return MFRC522_NTAG424DNA::AUTHENTICATION_DELAY;
+      return Ntag424::AUTHENTICATION_DELAY;
     case 0x91AE:
-      return MFRC522_NTAG424DNA::AUTHENTICATION_ERROR;
+      return Ntag424::AUTHENTICATION_ERROR;
     case 0x91AF:
-      return MFRC522_NTAG424DNA::ADDITIONAL_FRAME;
+      return Ntag424::ADDITIONAL_FRAME;
     case 0x91BE:
-      return MFRC522_NTAG424DNA::BOUNDARY_ERROR;
+      return Ntag424::BOUNDARY_ERROR;
     case 0x91CA:
-      return MFRC522_NTAG424DNA::COMMAND_ABORTED;
+      return Ntag424::COMMAND_ABORTED;
     case 0x91EE:
-      return MFRC522_NTAG424DNA::MEMORY_ERROR;
+      return Ntag424::MEMORY_ERROR;
     case 0x91F0:
-      return MFRC522_NTAG424DNA::FILE_NOT_FOUND;
+      return Ntag424::FILE_NOT_FOUND;
     default:
-      return MFRC522_NTAG424DNA::DNA_UNKNOWN_ERROR;
+      return Ntag424::DNA_UNKNOWN_ERROR;
   }
 }
 
 
-bool MFRC522_NTAG424DNA::DNA_IncrementCmdCtr()
+bool Ntag424::DNA_IncrementCmdCtr()
 {
   if(CmdCtr[0] == 0xFF)
   {
@@ -2113,7 +2123,7 @@ bool MFRC522_NTAG424DNA::DNA_IncrementCmdCtr()
 }
 
 
-void MFRC522_NTAG424DNA::DNA_CalculateCMACt(byte* CMACInput, byte CMACInputSize, byte* backCMACt)
+void Ntag424::DNA_CalculateCMACt(byte* CMACInput, byte CMACInputSize, byte* backCMACt)
 {
   byte CMAC[16];
   cmac.generateMAC(CMAC, SesAuthMacKey, CMACInput, CMACInputSize);
@@ -2125,7 +2135,7 @@ void MFRC522_NTAG424DNA::DNA_CalculateCMACt(byte* CMACInput, byte CMACInputSize,
 }
 
 
-void MFRC522_NTAG424DNA::DNA_CalculateCMACtNoData(byte Cmd, byte* CmdHeader, byte CmdHeaderLen, byte* backCMACt)
+void Ntag424::DNA_CalculateCMACtNoData(byte Cmd, byte* CmdHeader, byte CmdHeaderLen, byte* backCMACt)
 {
   byte* CMACinput = new byte[CmdHeaderLen + 7]; // Cmd CmdCtr[2] TI[4] CmdHeader[]
   CMACinput[0] = Cmd; // Cmd
@@ -2142,7 +2152,7 @@ void MFRC522_NTAG424DNA::DNA_CalculateCMACtNoData(byte Cmd, byte* CmdHeader, byt
 }
 
 
-void MFRC522_NTAG424DNA::DNA_CalculateCRC32NK(byte* message16, byte* backCRC)
+void Ntag424::DNA_CalculateCRC32NK(byte* message16, byte* backCRC)
 {
   uint32_t crc;
   crc = CRC32::calculate(message16, 16) & 0xFFFFFFFF ^ 0xFFFFFFFF;
@@ -2150,7 +2160,7 @@ void MFRC522_NTAG424DNA::DNA_CalculateCRC32NK(byte* message16, byte* backCRC)
 }
 
 
-void MFRC522_NTAG424DNA::DNA_CalculateDataEncAndCMACt(byte Cmd, byte* dataToEnc, byte dataToEncLen, byte* CmdHeader, byte CmdHeaderLen, byte* backDataEncAndCMACt)
+void Ntag424::DNA_CalculateDataEncAndCMACt(byte Cmd, byte* dataToEnc, byte dataToEncLen, byte* CmdHeader, byte CmdHeaderLen, byte* backDataEncAndCMACt)
 {
   byte* dataEnc = new byte[dataToEncLen];
   
@@ -2181,7 +2191,7 @@ void MFRC522_NTAG424DNA::DNA_CalculateDataEncAndCMACt(byte Cmd, byte* dataToEnc,
 }
 
 
-void MFRC522_NTAG424DNA::DNA_CalculateIV(byte b0, byte b1, byte* backIV)
+void Ntag424::DNA_CalculateIV(byte b0, byte b1, byte* backIV)
 {
   // b0 b1 TI 00000000000000000000
   byte IV[16] = {b0, b1};
@@ -2200,19 +2210,19 @@ void MFRC522_NTAG424DNA::DNA_CalculateIV(byte b0, byte b1, byte* backIV)
 }
 
 
-void MFRC522_NTAG424DNA::DNA_CalculateIVCmd(byte* backIVCmd)
+void Ntag424::DNA_CalculateIVCmd(byte* backIVCmd)
 {
   DNA_CalculateIV(0xA5, 0x5A, backIVCmd);
 }
 
 
-void MFRC522_NTAG424DNA::DNA_CalculateIVResp(byte* backIVResp)
+void Ntag424::DNA_CalculateIVResp(byte* backIVResp)
 {
   DNA_CalculateIV(0x5A, 0xA5, backIVResp);
 }
 
 
-void MFRC522_NTAG424DNA::DNA_GenerateSesAuthKeys(byte* authKey, byte* RndA, byte* RndB)
+void Ntag424::DNA_GenerateSesAuthKeys(byte* authKey, byte* RndA, byte* RndB)
 {
   byte SV[32];
   
@@ -2224,7 +2234,7 @@ void MFRC522_NTAG424DNA::DNA_GenerateSesAuthKeys(byte* authKey, byte* RndA, byte
 }
 
 
-void MFRC522_NTAG424DNA::DNA_CalculateSV(byte b0, byte b1, byte* RndA, byte* RndB, byte* backSV)
+void Ntag424::DNA_CalculateSV(byte b0, byte b1, byte* RndA, byte* RndB, byte* backSV)
 {
   // b0 b1 00010080 RndA[15..14] RndA[13..8]^RndB[15..10] RndB[9..0] RndA[7..0]
   byte SV[32] = {b0, b1, 0x00, 0x01, 0x00, 0x80, RndA[0], RndA[1]};
@@ -2238,13 +2248,13 @@ void MFRC522_NTAG424DNA::DNA_CalculateSV(byte b0, byte b1, byte* RndA, byte* Rnd
 }
 
 
-void MFRC522_NTAG424DNA::DNA_CalculateSV1(byte* RndA, byte* RndB, byte* backSV1)
+void Ntag424::DNA_CalculateSV1(byte* RndA, byte* RndB, byte* backSV1)
 {
   DNA_CalculateSV(0xA5, 0x5A, RndA, RndB, backSV1);
 }
 
 
-void MFRC522_NTAG424DNA::DNA_CalculateSV2(byte* RndA, byte* RndB, byte* backSV2)
+void Ntag424::DNA_CalculateSV2(byte* RndA, byte* RndB, byte* backSV2)
 {
   DNA_CalculateSV(0x5A, 0xA5, RndA, RndB, backSV2);
 }
